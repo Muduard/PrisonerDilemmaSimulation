@@ -160,9 +160,8 @@ def show_ix_confusion_matrix():
 
     # Confusion matrix
     ix_cnf = np.zeros((xcard, xcard))
-
     for i in range(REPETITIONS):
-        ix_cnf[data_final_ix1[i], data_final_ix2[i]] += 1
+        ix_cnf[data_final_ix2[i], data_final_ix1[i]] += 1
 
     # Divide by number of repetitions to get probability
     ix_cnf /= REPETITIONS
@@ -182,10 +181,5 @@ def enumerate_ks(K1, K2):
             ks.append(k)
     return ks
 
-#ks = enumerate_ks(data_final_K1, data_final_K2)
-
-#K_count = np.zeros((len(ks), len(ks)))
-#for i in range(REPETITIONS):
-#    K_count[ks.index(data_final_K2[i]), ks.index(data_final_K1[i])] += 1
 
 show_ix_confusion_matrix()
