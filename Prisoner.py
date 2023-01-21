@@ -45,8 +45,7 @@ def get_strategy(strategy, i, ix, k=[1, 1]):
         # Add eps to denominator for numerical stability (K1.max() can be 0)
         loss = (k[i - 2] - k[i - 1]) / (k.max() + eps)
         # Get how much space to the end of the position array
-        # TODO change based on loss direction, for now it works because of check_bounds function
-        remaining_path = (xcard - ix[i - 1] - 1) if xcard - 2 * ix[i - 1] > 0 else ix[i - 1]
+        remaining_path = (xcard - ix[i - 1] - 1) if loss < 0 else ix[i - 1]
         ix[i] = ix[i - 1] + lr * (loss + eps) * remaining_path
         ix[i] = check_bounds(ix[i])
     elif strategy == Strategy.COOPERATE:
@@ -143,5 +142,3 @@ ax.set_ylabel('ix2')
 
 # Display the visualization of the Confusion Matrix.
 plt.show()
-
-
