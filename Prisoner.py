@@ -5,17 +5,30 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from enum import Enum
 
+# Set seed for repeatability
+random.seed(10)
+
 
 # Enum for strategies
 class Strategy(Enum):
-    MIXED = 1
+    MIXED_2MEMORY = 1
     DEFECT = 2
     COOPERATE = 3
-    EXPLORATORY = 4
+    EXPLORATORY_2MEMORY = 4
+    MIXED_NMEMORY = 5
+    EXPLORATORY_NMEMORY = 6
+    MIXED_NMEMORY_EXP_WEIGHTED = 7
+    EXPLORATORY_NMEMORY_EXP_WEIGHTED = 8
+
 
 # Set number of repetitions with N trials each
 REPETITIONS = 1000
 
+# Term for numerical stability
+eps = np.exp(-10)
+
+# Learning rate
+lr = np.exp(-3)
 
 # Computes K using the formula in the paper (Material section)
 def compute_Ks(x1, x2):
@@ -48,6 +61,16 @@ def show_K_Values():
     plt.show()
 
 
+# Updates ix in loss direction
+def update_ix(i, ix, loss):
+    # Get how much space to the end of the position array
+    remaining_path = (xcard - ix[i - 1] - 1) if loss > 0 else ix[i - 1]
+    ix[i] = ix[i - 1] + lr * loss * remaining_path
+    ix[i] = check_bounds(ix[i])
+
+
+# Save all previous losses
+losses = []
 
 '''Returns correct strategy based on which one we want
 Example: we want only defect for an agent'''
@@ -55,33 +78,80 @@ Example: we want only defect for an agent'''
 
 def get_strategy(strategy, i, ix, k=[1, 1]):
 
-    if strategy == Strategy.MIXED:
+    if strategy == Strategy.MIXED_2MEMORY:
         # Get direction and magnitude by going where K is min
         # Add eps to denominator for numerical stability (K1.max() can be 0)
         loss = (k[i - 2] - k[i - 1]) / (k.max() + eps)
-        # Get how much space to the end of the position array
-        remaining_path = (xcard - ix[i - 1] - 1) if loss < 0 else ix[i - 1]
-        ix[i] = ix[i - 1] + lr * loss * remaining_path
-        ix[i] = check_bounds(ix[i])
+        update_ix(i, ix, loss)
     elif strategy == Strategy.COOPERATE:
         ix[i] = 9
     elif strategy == Strategy.DEFECT:
         ix[i] = 0
-    elif strategy == Strategy.EXPLORATORY:
+    elif strategy == Strategy.EXPLORATORY_2MEMORY:
         # If last two Ks are equal, we need to explore
         if np.abs((k[i - 2] - k[i - 1])) <= eps:
 
-            loss = -0.1 if ix[i-1] > xcard/2 else 0.1
-            remaining_path = (xcard - ix[i - 1] - 1) if loss > 0 else ix[i - 1]
-            ix[i] = ix[i - 1] + loss * remaining_path
-            ix[i] = check_bounds(ix[i])
+            loss = -0.1 / lr if ix[i-1] > xcard/2 else 0.1 / lr
+            update_ix(i, ix, loss)
         else:
             # If last two Ks are not equal, we proceed with MIXED strategy
-            get_strategy(Strategy.MIXED, i, ix, k)
+            get_strategy(Strategy.MIXED_2MEMORY, i, ix, k)
+    elif strategy == Strategy.MIXED_NMEMORY:
+
+        # Base case
+        if len(losses) == 0:
+            losses.append((k[0] - k[1]) / (k.max() + eps))
+        # Weight term
+        alpha = 1/len(losses)
+        # Loss is the sum of all previous losses
+        loss = 0
+        for l_index in range(i-2):
+            loss += alpha * losses[l_index]
+        losses.append(loss)
+        update_ix(i, ix, loss)
+
+    elif strategy == Strategy.EXPLORATORY_NMEMORY:
+        # If last two Ks are equal, we need to explore (Checking for further equality is useless by induction)
+        if np.abs((k[i - 2] - k[i - 1])) <= eps:
+
+            loss = -0.1/lr if ix[i - 1] > xcard / 2 else 0.1/lr
+            update_ix(i, ix, loss)
+        else:
+            # If last two Ks are not equal, we proceed with MIXED strategy
+            get_strategy(Strategy.MIXED_NMEMORY, i, ix, k)
+
+    elif strategy == Strategy.MIXED_NMEMORY_EXP_WEIGHTED:
+
+        # Base case
+        if len(losses) == 0:
+            losses.append((k[0] - k[1]) / (k.max() + eps))
+        # Weight term
+        gamma = 0.01
+        # Loss is the sum of all previous losses
+        loss = 0
+        loss_squared = 0
+        for l_index in range(i - 2):
+            loss += losses[l_index]
+            loss_squared += (losses[l_index] ** 2)
+        denominator = np.abs(gamma * losses[i - 2] + (1 - gamma) * loss_squared)
+
+        loss = loss / np.sqrt(denominator + eps)
+
+        losses.append(loss)
+        update_ix(i, ix, loss)
+
+    elif strategy == Strategy.EXPLORATORY_NMEMORY_EXP_WEIGHTED:
+        # If last two Ks are equal, we need to explore (Checking for further equality is useless by induction)
+        if np.abs((k[i - 2] - k[i - 1])) <= eps:
+
+            loss = -0.1/lr if ix[i - 1] > xcard / 2 else 0.1/lr
+            update_ix(i, ix, loss)
+        else:
+            # If last two Ks are not equal, we proceed with MIXED strategy
+            get_strategy(Strategy.MIXED_NMEMORY_EXP_WEIGHTED, i, ix, k)
 
 
-
-#Variables for the final confusion matrix
+# Variables for the final confusion matrix
 data_final_ix1 = []
 data_final_ix2 = []
 data_starting_ix1 = []
@@ -91,11 +161,6 @@ data_final_K2 = []
 
 for j in range(REPETITIONS):
 
-    # Term for numerical stability
-    eps = np.exp(-10)
-
-    # Learning rate
-    lr = np.exp(-3)
 
     # Number of trials
     N = 100
@@ -136,11 +201,14 @@ for j in range(REPETITIONS):
     K1[1] = LK1
     K2[1] = LK2
 
+    # Reset losses
+    losses = []
+
     # Main cycle
-    for i in range(2, 100):
+    for i in range(2, N):
         # Get new index based on strategy, ix is passed by reference
-        get_strategy(Strategy.EXPLORATORY, i, ix1, K1)
-        get_strategy(Strategy.EXPLORATORY, i, ix2, K2)
+        get_strategy(Strategy.MIXED_NMEMORY, i, ix1, K1)
+        get_strategy(Strategy.MIXED_NMEMORY, i, ix2, K2)
 
         x1 = x[ix1[i]]
         x2 = x[ix2[i]]
@@ -155,6 +223,7 @@ for j in range(REPETITIONS):
     data_final_ix2.append(ix2[-1])
     data_final_K1.append(K1[-1])
     data_final_K2.append(K2[-1])
+
 
 def show_ix_confusion_matrix():
 
