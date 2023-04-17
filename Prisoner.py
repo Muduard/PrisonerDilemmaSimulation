@@ -11,15 +11,15 @@ random.seed(10)
 
 # Enum for strategies
 class Strategy(Enum):
-    MIXED_2MEMORY = 1
+    SIMPLE_2MEMORY = 1
     DEFECT = 2
     COOPERATE = 3
     EXPLORATORY_2MEMORY = 4
-    MIXED_NMEMORY = 5
+    SIMPLE_NMEMORY = 5
     EXPLORATORY_NMEMORY = 6
-    MIXED_NMEMORY_EXP_WEIGHTED = 7
+    SIMPLE_NMEMORY_EXP_WEIGHTED = 7
     EXPLORATORY_NMEMORY_EXP_WEIGHTED = 8
-
+    ORACLE_AGENT = 9
 
 # Set number of repetitions with N trials each
 REPETITIONS = 1000
@@ -95,7 +95,7 @@ Example: we want only defect for an agent'''
 
 def get_strategy(strategy, i, ix, k, directions):
 
-    if strategy == Strategy.MIXED_2MEMORY:
+    if strategy == Strategy.SIMPLE_2MEMORY:
         # Get direction and magnitude by going where K is min
         # Add eps to denominator for numerical stability (K1.max() can be 0)
         loss = (k[i - 2] - k[i - 1]) / (k.max() + eps)
@@ -113,9 +113,9 @@ def get_strategy(strategy, i, ix, k, directions):
             direction = get_exploratory_direction(ix)
             update_ix(i, ix, loss, direction, directions)
         else:
-            # If last two Ks are not equal, we proceed with MIXED strategy
-            get_strategy(Strategy.MIXED_2MEMORY, i, ix, k, directions)
-    elif strategy == Strategy.MIXED_NMEMORY:
+            # If last two Ks are not equal, we proceed with SIMPLE strategy
+            get_strategy(Strategy.SIMPLE_2MEMORY, i, ix, k, directions)
+    elif strategy == Strategy.SIMPLE_NMEMORY:
 
         # Base case
         if len(losses) == 0:
@@ -125,6 +125,7 @@ def get_strategy(strategy, i, ix, k, directions):
         # Loss is the sum of all previous losses
         loss = 0
         for l_index in range(i-2):
+
             loss += losses[l_index]
         loss = alpha * loss
         losses.append(loss)
@@ -138,11 +139,12 @@ def get_strategy(strategy, i, ix, k, directions):
             loss = -0.1/lr if ix[i - 1] > xcard / 2 else 0.1/lr
             direction = get_exploratory_direction(ix)
             update_ix(i, ix, loss, direction, directions)
+            losses.append(loss)
         else:
-            # If last two Ks are not equal, we proceed with MIXED strategy
-            get_strategy(Strategy.MIXED_NMEMORY, i, ix, k, directions)
+            # If last two Ks are not equal, we proceed with SIMPLE strategy
+            get_strategy(Strategy.SIMPLE_NMEMORY, i, ix, k, directions)
 
-    elif strategy == Strategy.MIXED_NMEMORY_EXP_WEIGHTED:
+    elif strategy == Strategy.SIMPLE_NMEMORY_EXP_WEIGHTED:
 
         # Base case
         if len(losses) == 0:
@@ -152,7 +154,7 @@ def get_strategy(strategy, i, ix, k, directions):
         # Loss is the sum of all previous losses
         loss = 0
         loss_squared = 0
-        for l_index in range(i - 2):
+        for l_index in range(i - 3):
             loss += losses[l_index]
             loss_squared += (losses[l_index] ** 2)
         denominator = 1
@@ -172,10 +174,16 @@ def get_strategy(strategy, i, ix, k, directions):
             loss = -0.1/lr if ix[i - 1] > xcard / 2 else 0.1/lr
             direction = get_exploratory_direction(ix)
             update_ix(i, ix, loss, direction, directions)
+            losses.append(loss)
         else:
-            # If last two Ks are not equal, we proceed with MIXED strategy
-            get_strategy(Strategy.MIXED_NMEMORY_EXP_WEIGHTED, i, ix, k, directions)
-
+            # If last two Ks are not equal, we proceed with SIMPLE strategy
+            get_strategy(Strategy.SIMPLE_NMEMORY_EXP_WEIGHTED, i, ix, k, directions)
+    elif strategy == Strategy.ORACLE_AGENT:
+        # Get direction and magnitude by going where K is min
+        # Add eps to denominator for numerical stability (K1.max() can be 0)
+        loss = (k[i - 2] - k[i - 1]) / (k.max() + eps)
+        direction = get_normal_direction(ix)
+        update_ix(i, ix, loss, direction, directions)
 
 # Variables for the final confusion matrix
 data_final_ix1 = []
@@ -188,7 +196,7 @@ data_final_K2 = []
 for j in range(REPETITIONS):
 
     # Number of trials
-    N = 30
+    N = 40
 
     # Generate positions based on sample size
     x = np.linspace(0, 15, xcard)
@@ -230,8 +238,9 @@ for j in range(REPETITIONS):
     # Main cycle
     for i in range(2, N):
         # Get new index based on strategy, ix is passed by reference
-        get_strategy(Strategy.EXPLORATORY_NMEMORY_EXP_WEIGHTED, i, ix1, K1, directions)
-        get_strategy(Strategy.EXPLORATORY_NMEMORY_EXP_WEIGHTED, i, ix2, K2, directions)
+        # To Simulate one player game pass K1 + K2 to the agents to minimize the combined force
+        get_strategy(Strategy.EXPLORATORY_2MEMORY, i, ix1, K1, directions)
+        get_strategy(Strategy.EXPLORATORY_2MEMORY, i, ix2, K2, directions)
 
         x1 = x[ix1[i]]
         x2 = x[ix2[i]]
